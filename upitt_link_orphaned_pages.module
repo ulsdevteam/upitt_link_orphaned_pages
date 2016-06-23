@@ -1,0 +1,147 @@
+<?php
+
+/* 
+ * To change this license header, choose License Headers in Project Properties.
+ * To change this template file, choose Tools | Templates
+ * and open the template in the editor.
+ */
+
+
+/**
+ * Implements hook_menu().
+ */
+function upitt_link_orphaned_pages_menu() {
+  return array(
+    'islandora/object/%islandora_object/manage/book/link_existing' => array(
+      'title' => 'Link Existing Page',
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('upitt_link_orphaned_pages_link_existing_page', 2),
+      'type' => MENU_LOCAL_ACTION,
+      'access callback' => 'islandora_object_access',
+      'access arguments' => array(ISLANDORA_INGEST, 2),
+    ),
+    'islandora/orphaned_pages/autocomplete' => array(
+      'title' => 'Autocomplete for cities',
+      'page callback' => '_orphaned_pages_autocomplete',
+      'access arguments' => array('use autocomplete'),  //or whatever permission makes sense
+      'type' => MENU_CALLBACK,
+    ),
+  );
+}
+
+// RELS_EXT_hasModel_uri_s is islandora:pageCModel
+// no value for RELS_EXT_isPageOf_uri_s
+function upitt_link_orphaned_pages_get_orphaned_pages($like = '') {
+  $models = array('pageCModel', 'Newspaper');
+  module_load_include('inc', 'islandora_solr_search', 'includes/utilities');
+  $query_processor = new IslandoraSolrQueryProcessor();
+  if ($like) {
+    $query_processor->solrQuery = format_string('(PID:*!like* OR fgs_label_mt:*!like*) AND RELS_EXT_hasModel_uri_s:(*' . str_replace(":", "\:", implode("* OR *", $models)) . '*) AND -RELS_EXT_isPageOf_uri_s:["" TO *]',
+      array('!like' => $like));
+  } else {
+    $query_processor->solrQuery = 'RELS_EXT_hasModel_uri_s:(*' . str_replace(":", "\:", implode("* OR *", $models)) . '*) AND -RELS_EXT_isPageOf_uri_s:["" TO *]';
+  }
+  $query_processor->solrStart = 0;
+  $query_processor->solrLimit = 1000;
+  $query_processor->solrParams = array(
+    'fl' => "PID,fgs_label_mt,RELS_EXT_hasModel_uri_s",
+    'fq' => variable_get('islandora_solr_base_filter', ''),
+  );
+  $url = parse_url(variable_get('islandora_solr_url', 'localhost:8080/solr'));
+  $solr = new Apache_Solr_Service($url['host'], $url['port'], $url['path'] . '/');
+  $solr->setCreateDocuments(FALSE);
+  try {
+    $results = $solr->search($query_processor->solrQuery, $query_processor->solrStart, $query_processor->solrLimit, $query_processor->solrParams, 'GET');
+    $tmp = json_decode($results->getRawResponse(), TRUE);
+    $results = array();
+    foreach ($tmp['response']['docs'] as $trip) {
+      $results[$trip['PID']] = isset($trip['fgs_label_mt'][0]) ?$trip['fgs_label_mt'][0] . ' (' . $trip['PID'] . ')' : $trip['PID'];
+    }
+    return $results;
+  }
+  catch (Exception $e) {
+    return array();
+  }
+}
+
+/**
+ * The link existing page form.
+ */
+function upitt_link_orphaned_pages_link_existing_page($form, &$form_state, AbstractObject $object) {
+  $path = drupal_get_path('module', 'upitt_link_orphaned_pages');
+  drupal_add_js("$path/js/link_orphans.js");
+  $pages = array('one' => 'one orphan page', 'two' => 'two orphan page');// get some SOLR list of orphaned pages?
+  $pages = upitt_link_orphaned_pages_get_orphaned_pages(NULL);
+  
+  // $first_page = $pages;
+  $form = array(
+    'options' => array(
+      '#type' => 'fieldset',
+      '#title' => t('Select Page'),
+      '#attributes' => array('class' => array('container-inline')),
+      'page_select' => array(
+        '#title' => 'Title (PID)',
+        '#type' => 'select',
+        '#default_value' => '',
+        '#options' => $pages,
+      ),
+      'page' => array(
+        '#type' => 'textfield',
+        '#autocomplete_path' => 'islandora/orphaned_pages/autocomplete',
+        '#default_value' => '',
+        '#size' => 30
+      ),
+      'object_id' => array(
+        '#type' => 'value',
+        '#value' => $object->id,
+      ),
+    ),
+  );
+
+  return confirm_form(
+    $form,
+    t('Select Page to link to this "@book" Book?', array('@book' => $object->label)),
+    "islandora/object/{$object->id}/manage/book",
+    t('The page will become related to the book.  Reording pages is dependant.'),
+    t('Save'),
+    t('Cancel')
+  );
+}
+
+/**
+ * Submit handler for upitt_link_orphaned_pages_link_existing_page.
+ */
+function upitt_link_orphaned_pages_link_existing_page_submit($form, &$form_state) {
+  $object = islandora_object_load($form_state['values']['object_id']);
+  if ($form_state['values']['page']) {
+    $pid = $linked_to_pid[0];
+  }
+  else {
+    $pid = $form_state['values']['page_select'];
+  }
+  $link_to_object = islandora_object_load($pid);
+  /// Make the connection.
+  if ($object && $link_to_object) {
+    $link_to_object->relationships->add(FEDORA_RELS_EXT_URI, 'isPageOf', $form_state['values']['object_id']);
+    drupal_set_message(t('The @link_to_object_id was linked to @object_id', 
+      array('@object_id' => $object->id,
+            '@link_to_object_id' => $link_to_object->id)));
+  }
+  $form_state['redirect'] = "islandora/object/{$object->id}/manage/book";
+}
+
+/**
+* autocomplete helper
+* $string = string for search
+*/
+function _orphaned_pages_autocomplete($string) {
+  $matches = array();
+  $results = upitt_link_orphaned_pages_get_orphaned_pages($string);
+
+  foreach ($results as $key=>$result) {
+    $matches[$result] = check_plain($key);
+  }
+  // return for JS
+  drupal_json_output($matches);
+  exit();
+}
