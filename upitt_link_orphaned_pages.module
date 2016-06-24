@@ -24,7 +24,8 @@ function upitt_link_orphaned_pages_menu() {
       'title' => 'Autocomplete for cities',
       'page callback' => '_orphaned_pages_autocomplete',
       'access arguments' => array(
-        2, array(ISLANDORA_VIEW_OBJECTS), array('islandora:bookCModel'),
+        2, array(ISLANDORA_VIEW_OBJECTS), array('islandora:bookCModel')
+      ),
       'type' => MENU_CALLBACK,
     ),
   );
