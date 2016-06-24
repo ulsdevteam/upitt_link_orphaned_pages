@@ -23,7 +23,8 @@ function upitt_link_orphaned_pages_menu() {
     'islandora/orphaned_pages/autocomplete' => array(
       'title' => 'Autocomplete for cities',
       'page callback' => '_orphaned_pages_autocomplete',
-      'access arguments' => array('use autocomplete'),  //or whatever permission makes sense
+      'access arguments' => array(
+        2, array(ISLANDORA_VIEW_OBJECTS), array('islandora:bookCModel'),
       'type' => MENU_CALLBACK,
     ),
   );
@@ -51,6 +52,7 @@ function upitt_link_orphaned_pages_get_orphaned_pages($like = '') {
   $solr = new Apache_Solr_Service($url['host'], $url['port'], $url['path'] . '/');
   $solr->setCreateDocuments(FALSE);
   try {
+    drupal_set_message(variable_get('islandora_solr_url', 'localhost:8080/solr') . '/select?q='.$query_processor->solrQuery.'&rows=100&fl=PID,fgs_label_mt,RELS_EXT_hasModel_uri_s&fq='.variable_get('islandora_solr_base_filter', ''));
     $results = $solr->search($query_processor->solrQuery, $query_processor->solrStart, $query_processor->solrLimit, $query_processor->solrParams, 'GET');
     $tmp = json_decode($results->getRawResponse(), TRUE);
     $results = array();
@@ -114,7 +116,7 @@ function upitt_link_orphaned_pages_link_existing_page($form, &$form_state, Abstr
 function upitt_link_orphaned_pages_link_existing_page_submit($form, &$form_state) {
   $object = islandora_object_load($form_state['values']['object_id']);
   if ($form_state['values']['page']) {
-    $pid = $linked_to_pid[0];
+    $pid = $form_state['values']['page'];
   }
   else {
     $pid = $form_state['values']['page_select'];
