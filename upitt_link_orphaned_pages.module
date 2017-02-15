@@ -23,7 +23,7 @@ function upitt_link_orphaned_pages_menu() {
     'islandora/orphaned_pages/autocomplete' => array(
       'title' => 'Autocomplete for cities',
       'page callback' => '_orphaned_pages_autocomplete',
-      'access arguments' => array('use autocomplete'),  //or whatever permission makes sense
+      'access arguments' => array(ISLANDORA_METADATA_EDIT), // array('administer site configuration'), array('use autocomplete'),  //or whatever permission makes sense
       'type' => MENU_CALLBACK,
     ),
   );
@@ -33,7 +33,7 @@ function upitt_link_orphaned_pages_menu() {
 // no value for RELS_EXT_isPageOf_uri_s
 function upitt_link_orphaned_pages_get_orphaned_pages($like = '') {
   $models = array('pageCModel', 'Newspaper');
-  module_load_include('inc', 'islandora_solr_search', 'includes/utilities');
+  module_load_include('inc', 'islandora_solr', 'includes/utilities');
   $query_processor = new IslandoraSolrQueryProcessor();
   if ($like) {
     $query_processor->solrQuery = format_string('(PID:*!like* OR fgs_label_mt:*!like*) AND RELS_EXT_hasModel_uri_s:(*' . str_replace(":", "\:", implode("* OR *", $models)) . '*) AND -RELS_EXT_isPageOf_uri_s:["" TO *]',
@@ -70,7 +70,6 @@ function upitt_link_orphaned_pages_get_orphaned_pages($like = '') {
 function upitt_link_orphaned_pages_link_existing_page($form, &$form_state, AbstractObject $object) {
   $path = drupal_get_path('module', 'upitt_link_orphaned_pages');
   drupal_add_js("$path/js/link_orphans.js");
-  $pages = array('one' => 'one orphan page', 'two' => 'two orphan page');// get some SOLR list of orphaned pages?
   $pages = upitt_link_orphaned_pages_get_orphaned_pages(NULL);
   
   // $first_page = $pages;
@@ -101,7 +100,7 @@ function upitt_link_orphaned_pages_link_existing_page($form, &$form_state, Abstr
   return confirm_form(
     $form,
     t('Select Page to link to this "@book" Book?', array('@book' => $object->label)),
-    "islandora/object/{$object->id}/manage/book",
+    "islandora/object/{$object->id}/manage",
     t('The page will become related to the book.  Reording pages is dependant.'),
     t('Save'),
     t('Cancel')
@@ -114,7 +113,7 @@ function upitt_link_orphaned_pages_link_existing_page($form, &$form_state, Abstr
 function upitt_link_orphaned_pages_link_existing_page_submit($form, &$form_state) {
   $object = islandora_object_load($form_state['values']['object_id']);
   if ($form_state['values']['page']) {
-    $pid = $linked_to_pid[0];
+    $pid = $form_state['values']['page'];
   }
   else {
     $pid = $form_state['values']['page_select'];
@@ -127,7 +126,7 @@ function upitt_link_orphaned_pages_link_existing_page_submit($form, &$form_state
       array('@object_id' => $object->id,
             '@link_to_object_id' => $link_to_object->id)));
   }
-  $form_state['redirect'] = "islandora/object/{$object->id}/manage/book";
+  $form_state['redirect'] = "islandora/object/{$object->id}/manage";
 }
 
 /**
@@ -137,7 +136,6 @@ function upitt_link_orphaned_pages_link_existing_page_submit($form, &$form_state
 function _orphaned_pages_autocomplete($string) {
   $matches = array();
   $results = upitt_link_orphaned_pages_get_orphaned_pages($string);
-
   foreach ($results as $key=>$result) {
     $matches[$result] = check_plain($key);
   }
